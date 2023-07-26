@@ -36,7 +36,15 @@ async function run() {
             const result = await productsCollection.insertOne(product);
             res.send(result);
 
+        });
+        // 
+        app.get('/products/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { phone_id: id };
+            const categoryProducts = await productsCollection.find(query).toArray();
+            res.send(categoryProducts);
         })
+
 
     }
     finally {
