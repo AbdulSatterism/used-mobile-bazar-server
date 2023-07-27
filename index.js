@@ -24,6 +24,7 @@ async function run() {
     try {
         const categoriesCollection = client.db('usedMobileBazar').collection('categories');
         const productsCollection = client.db('usedMobileBazar').collection('products');
+        const ordersCollection = client.db('usedMobileBazar').collection('orders');
 
         app.get('/categories', async (req, res) => {
             const query = {};
@@ -43,6 +44,19 @@ async function run() {
             const query = { phone_id: id };
             const categoryProducts = await productsCollection.find(query).toArray();
             res.send(categoryProducts);
+        });
+
+        app.post('/orders', async (req, res) => {
+            const orders = req.body;
+            const result = await ordersCollection.insertOne(orders);
+            res.send(result)
+        });
+
+        //
+        app.get('/orders', async (req, res) => {
+            const query = {};
+            const ordersItem = await ordersCollection.find(query).toArray();
+            res.send(ordersItem)
         })
 
 
