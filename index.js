@@ -1,5 +1,5 @@
 const express = require('express');
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const cors = require('cors');
 require('dotenv').config();
 const app = express();
@@ -51,14 +51,32 @@ async function run() {
             const result = await ordersCollection.insertOne(orders);
             res.send(result)
         });
-
+        app.put('/orders/:id', async (req, res) => {
+            const id = req.params.id;
+            const filter = { productId: id };
+            const option = { upsert: true };
+            const updetDoc = {
+                $set: {
+                    orderRole: 'sold'
+                }
+            };
+            const result = await ordersCollection.updateOne(filter, updetDoc, option);
+            res.send(result);
+        })
         //
         app.get('/orders', async (req, res) => {
-            const query = {};
+            const email = req.query.email;
+            const query = { email: email }
             const ordersItem = await ordersCollection.find(query).toArray();
             res.send(ordersItem)
         })
-
+        //
+        app.delete('/orders/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) };
+            const result = await ordersCollection.deleteOne(query);
+            res.send(result);
+        })
 
     }
     finally {
