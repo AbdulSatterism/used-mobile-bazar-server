@@ -25,6 +25,19 @@ async function run() {
         const categoriesCollection = client.db('usedMobileBazar').collection('categories');
         const productsCollection = client.db('usedMobileBazar').collection('products');
         const ordersCollection = client.db('usedMobileBazar').collection('orders');
+        const usersCollection = client.db('usedMobileBazar').collection('users');
+
+        //sign in user collect
+        app.post('/users', async (req, res) => {
+            const user = req.body;
+            const query = { email: user.email };
+            const existingUser = await usersCollection.findOne(query);
+            if (existingUser) {
+                return res.send({ message: 'user already sign in' })
+            }
+            const result = await usersCollection.insertOne(user);
+            res.send(result)
+        })
 
         app.get('/categories', async (req, res) => {
             const query = {};
@@ -48,6 +61,11 @@ async function run() {
 
         app.post('/orders', async (req, res) => {
             const orders = req.body;
+            const query = { productId: orders?.productId };
+            const existingOrder = await ordersCollection.findOne(query);
+            if (existingOrder) {
+                return res.send({ message: 'This order already booked' })
+            }
             const result = await ordersCollection.insertOne(orders);
             res.send(result)
         });
@@ -69,7 +87,14 @@ async function run() {
             const query = { email: email }
             const ordersItem = await ordersCollection.find(query).toArray();
             res.send(ordersItem)
-        })
+        });
+        // app.get('/allorders', async (req, res) => {
+
+        //     const query = {  }
+        //     const orders = await ordersCollection.find(query).toArray();
+        //     res.send(orders)
+        // })
+
         //
         app.delete('/orders/:id', async (req, res) => {
             const id = req.params.id;
