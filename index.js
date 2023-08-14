@@ -1,6 +1,7 @@
 const express = require('express');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const cors = require('cors');
+const jwt = require('jsonwebtoken')
 require('dotenv').config();
 const app = express();
 const port = process.env.PORT || 5000;
@@ -8,6 +9,23 @@ const port = process.env.PORT || 5000;
 //middle wares
 app.use(cors());
 app.use(express.json());
+
+const verifyJWT = (req, res, next) => {
+    const authorization = req.headers.authorization;
+    // console.log(authorization)
+    if (!authorization) {
+        return res.status(401).send({ error: true, message: 'unauthorized access' })
+    }
+    //bearer token
+    const token = authorization.split(' ')[1];
+    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+        if (err) {
+            return res.status(401).send({ error: true, message: 'unauthorized access' })
+        }
+        req.decoded = decoded;
+        next();
+    })
+}
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.hlsud.mongodb.net/?retryWrites=true&w=majority`;
 
@@ -27,7 +45,46 @@ async function run() {
         const ordersCollection = client.db('usedMobileBazar').collection('orders');
         const usersCollection = client.db('usedMobileBazar').collection('users');
 
-        //sign in user collect
+        //jwt
+        app.post('/jwt', (req, res) => {
+            const user = req.body;
+            const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1h' });
+            res.send({ token })
+        })
+
+        //verifyAdmin
+        //warning verifyJWT use before verfyAdmin 
+        const verifyAdmin = async (req, res, next) => {
+            const email = req.decoded.email;
+            const query = { email: email };
+            const user = await usersCollection.findOne(query);
+            if (user?.role !== 'admin') {
+                return res.status(403).send({ error: true, message: 'forbiden message' })
+            }
+            next()
+        }
+        // //seller secure 
+        // const verifySeller = async (req, res, next) => {
+        //     const email = req.decoded.email;
+        //     const query = { email: email };
+        //     const user = await usersCollection.findOne(query);
+        //     if (user?.role !== 'seller') {
+        //         return res.status(403).send({ error: true, message: 'forbiden message' })
+        //     }
+        //     next()
+        // }
+        // //verifyBuyer secure 
+        // const verifyBuyer = async (req, res, next) => {
+        //     const email = req.decoded.email;
+        //     const query = { email: email };
+        //     const user = await usersCollection.findOne(query);
+        //     if (user?.role !== 'buyer') {
+        //         return res.status(403).send({ error: true, message: 'forbiden message' })
+        //     }
+        //     next()
+        // }
+
+
         app.post('/users', async (req, res) => {
             const user = req.body;
             const query = { email: user.email };
@@ -37,7 +94,82 @@ async function run() {
             }
             const result = await usersCollection.insertOne(user);
             res.send(result)
+        });
+
+
+        //sign in user collect
+        /**
+         * do not show secure links to those who should not see the links
+         * 1. use jwt token : verify
+         * admin verify
+         */
+        app.get('/users', verifyJWT, verifyAdmin, async (req, res) => {
+            const query = {};
+            const result = await usersCollection.find(query).toArray();
+            res.send(result)
         })
+
+        // security layer: verifyJWT
+        // email check
+        //check admin
+        app.get('/users/admin/:email', verifyJWT, async (req, res) => {
+            const email = req.params.email;
+
+            if (req.decoded.email !== email) {
+                res.send({ admin: false })
+            }
+
+            const query = { email: email };
+            const user = await usersCollection.findOne(query);
+            const result = { admin: user?.role === 'admin' };
+            res.send(result)
+        })
+        //seller pannel
+        app.get('/users/seller/:email', verifyJWT, async (req, res) => {
+            const email = req.params.email;
+
+            if (req.decoded.email !== email) {
+                res.send({ seller: false })
+            }
+
+            const query = { email: email };
+            const user = await usersCollection.findOne(query);
+            const result = { seller: user?.role === 'seller' };
+            res.send(result)
+        })
+        // buyer pannel
+        app.get('/users/buyer/:email', verifyJWT, async (req, res) => {
+            const email = req.params.email;
+
+            if (req.decoded.email !== email) {
+                res.send({ buyer: false })
+            }
+
+            const query = { email: email };
+            const user = await usersCollection.findOne(query);
+            const result = { buyer: user?.role === 'buyer' };
+            res.send(result)
+        })
+
+        app.patch('/users/admin/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) };
+            const updatedDoc = {
+                $set: {
+                    role: 'admin'
+                }
+            };
+            const result = await usersCollection.updateOne(query, updatedDoc);
+            res.send(result)
+        });
+        //
+        app.delete('/users/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) };
+            const result = await usersCollection.deleteOne(query);
+            res.send(result);
+        })
+
 
         app.get('/categories', async (req, res) => {
             const query = {};
@@ -51,13 +183,28 @@ async function run() {
             res.send(result);
 
         });
-        // 
+
         app.get('/products/:id', async (req, res) => {
             const id = req.params.id;
             const query = { phone_id: id };
             const categoryProducts = await productsCollection.find(query).toArray();
             res.send(categoryProducts);
         });
+        // get product by adding user email
+        app.get('/productsByUser/:email', verifyJWT, async (req, res) => {
+            const email = req.params.email;
+            const query = { sellerEmail: email };
+            const products = await productsCollection.find(query).toArray();
+            res.send(products)
+        })
+
+        app.delete('/products/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) };
+            const result = await productsCollection.deleteOne(query);
+            res.send(result);
+        })
+
 
         app.post('/orders', async (req, res) => {
             const orders = req.body;
@@ -82,18 +229,24 @@ async function run() {
             res.send(result);
         })
         //
-        app.get('/orders', async (req, res) => {
+        app.get('/orders', verifyJWT, async (req, res) => {
             const email = req.query.email;
+
+            const decodedEmail = req.decoded.email;
+            if (email !== decodedEmail) {
+                return res.status(403).send({ error: true, message: 'forviden access' })
+            }
+
             const query = { email: email }
             const ordersItem = await ordersCollection.find(query).toArray();
             res.send(ordersItem)
         });
-        // app.get('/allorders', async (req, res) => {
 
-        //     const query = {  }
-        //     const orders = await ordersCollection.find(query).toArray();
-        //     res.send(orders)
-        // })
+        app.get('/allorders', verifyJWT, verifyAdmin, async (req, res) => {
+            const query = {}
+            const orders = await ordersCollection.find(query).toArray();
+            res.send(orders)
+        })
 
         //
         app.delete('/orders/:id', async (req, res) => {
